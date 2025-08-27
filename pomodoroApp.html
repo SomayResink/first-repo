@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Boy Pomodoro Timer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'gameboy-dark': '#0f380f',
+                        'gameboy-medium': '#306230',
+                        'gameboy-light': '#8bac0f',
+                        'gameboy-pale': '#9bbc0f',
+                        'gameboy-screen': '#c4cfa1',
+                        'gameboy-border': '#5a6e12',
+                    },
+                    fontFamily: {
+                        'press-start': ['"Press Start 2P"', 'cursive'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gameboy-pale min-h-screen flex items-center justify-center p-4 font-press-start text-gameboy-dark">
+    <div class="gameboy-container bg-gray-300 rounded-xl p-6 shadow-2xl border-8 border-gameboy-medium max-w-md w-full">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-4">
+            <div class="text-xs">POMODORO</div>
+            <div class="text-xs flex items-center">
+                <span class="inline-block w-3 h-3 bg-red-500 rounded-full mr-1"></span>
+                <span>POWER</span>
+            </div>
+        </div>
+        
+        <!-- Screen -->
+        <div class="bg-gameboy-screen border-4 border-gameboy-border rounded p-4 mb-6 shadow-inner">
+            <!-- Timer Display -->
+            <div id="timer" class="text-4xl text-center mb-4 py-2">25:00</div>
+            
+            <!-- Mode Indicator -->
+            <div class="flex justify-center space-x-4 mb-4">
+                <span id="workMode" class="bg-gameboy-light px-2 py-1 rounded text-xs">KERJA</span>
+                <span id="breakMode" class="bg-gray-400 px-2 py-1 rounded text-xs">ISTIRAHAT</span>
+            </div>
+            
+            <!-- Task Input -->
+            <input 
+                type="text" 
+                id="taskInput" 
+                placeholder="Masukkan kegiatan..." 
+                class="w-full p-2 text-xs bg-gameboy-screen border border-gameboy-border rounded mb-2 placeholder-gameboy-dark"
+            >
+            <div class="text-right text-xs mb-2">
+                <span id="pomodoroCount">Pomodoro: 0</span>
+            </div>
+        </div>
+        
+        <!-- Controls -->
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <button id="startBtn" class="bg-gameboy-light py-2 rounded-lg text-xs hover:bg-gameboy-medium transition">START</button>
+            <button id="stopBtn" disabled class="bg-gray-400 py-2 rounded-lg text-xs cursor-not-allowed">STOP</button>
+            <button id="resetBtn" class="bg-gameboy-light py-2 rounded-lg text-xs hover:bg-gameboy-medium transition">RESET</button>
+            <button id="finishBtn" class="bg-green-500 py-2 rounded-lg text-xs hover:bg-green-600 transition">FINISH</button>
+        </div>
+        
+        <!-- History Section -->
+        <div class="bg-gameboy-screen border-4 border-gameboy-border rounded p-3 text-xs shadow-inner max-h-40 overflow-y-auto">
+            <h3 class="text-center mb-2">RIWAYAT</h3>
+            <ul id="historyList"></ul>
+        </div>
+        
+        <!-- D-pad and Buttons -->
+        <div class="flex justify-between items-center mt-6">
+            <!-- D-pad -->
+            <div class="relative w-20 h-20">
+                <div class="absolute inset-0 bg-gray-500 rounded-full"></div>
+                <div class="absolute top-0 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-700 rounded"></div>
+                <div class="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-6 bg-gray-700 rounded"></div>
+                <div class="absolute left-0 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-gray-700 rounded"></div>
+                <div class="absolute right-0 top-1/2 transform -translate-y-1/2 w-6 h-6 bg-gray-700 rounded"></div>
+                <div class="absolute inset-4 bg-gray-700 rounded-full"></div>
+            </div>
+            
+            <!-- A/B Buttons -->
+            <div class="flex space-x-4">
+                <div class="relative">
+                    <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center shadow">B</div>
+                </div>
+                <div class="relative">
+                    <div class="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center shadow">A</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center text-xs mt-6">
+            <div>@2025 Kemskuy</div>
+        </div>
+    </div>
+
+    <script>
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const finishBtn = document.getElementById('finishBtn');
+        const timerDisplay = document.getElementById('timer');
+        const taskInput = document.getElementById('taskInput');
+        const historyList = document.getElementById('historyList');
+        const workMode = document.getElementById('workMode');
+        const breakMode = document.getElementById('breakMode');
+        const pomodoroCount = document.getElementById('pomodoroCount');
+
+        let timer;
+        let isRunning = false;
+        let isWorkTime = true;
+        let timeLeft = 25 * 60; // 25 menit dalam detik
+        let history = JSON.parse(localStorage.getItem('pomodoroHistory')) || [];
+        let completedPomodoros = parseInt(localStorage.getItem('completedPomodoros')) || 0;
+
+        // Minta izin notifikasi saat halaman dimuat
+        if (Notification.permission !== 'granted') {
+            Notification.requestPermission();
+        }
+
+        // Update tampilan mode
+        function updateModeDisplay() {
+            if (isWorkTime) {
+                workMode.classList.add('bg-gameboy-light');
+                workMode.classList.remove('bg-gray-400');
+                breakMode.classList.add('bg-gray-400');
+                breakMode.classList.remove('bg-gameboy-light');
+            } else {
+                workMode.classList.add('bg-gray-400');
+                workMode.classList.remove('bg-gameboy-light');
+                breakMode.classList.add('bg-gameboy-light');
+                breakMode.classList.remove('bg-gray-400');
+            }
+        }
+
+        // Fungsi untuk memperbarui tampilan timer
+        function updateTimerDisplay() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            timerDisplay.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            // Ubah warna timer saat waktu hampir habis
+            if (timeLeft <= 60) {
+                timerDisplay.classList.add('text-red-600', 'animate-pulse');
+            } else {
+                timerDisplay.classList.remove('text-red-600', 'animate-pulse');
+            }
+        }
+
+        // Fungsi untuk menampilkan notifikasi
+        function showNotification(message) {
+            if (Notification.permission === 'granted') {
+                new Notification(message);
+            }
+            
+            // Fallback alert jika notifikasi tidak diizinkan
+            if (Notification.permission !== 'granted') {
+                alert(message);
+            }
+        }
+
+        // Fungsi untuk menyimpan riwayat
+        function saveHistory(task, type, duration, completed = true) {
+            const entry = {
+                task: task || 'Kegiatan Tanpa Nama',
+                type: type,
+                duration: duration,
+                completed: completed,
+                timestamp: new Date().toLocaleString('id-ID')
+            };
+            history.push(entry);
+            localStorage.setItem('pomodoroHistory', JSON.stringify(history));
+            
+            // Update counter pomodoro jika selesai kerja
+            if (type === 'Kerja' && completed) {
+                completedPomodoros++;
+                localStorage.setItem('completedPomodoros', completedPomodoros);
+                pomodoroCount.textContent = `Pomodoro: ${completedPomodoros}`;
+            }
+            
+            updateHistoryDisplay();
+        }
+
+        // Fungsi untuk memperbarui tampilan riwayat
+        function updateHistoryDisplay() {
+            historyList.innerHTML = '';
+            // Tampilkan hanya 5 riwayat terbaru
+            const recentHistory = history.slice(-5);
+            
+            recentHistory.forEach(entry => {
+                const li = document.createElement('li');
+                li.className = 'mb-1 border-b border-gameboy-border pb-1 flex justify-between';
+                
+                const taskText = document.createElement('span');
+                taskText.textContent = `${entry.task} (${entry.type})`;
+                
+                const statusIcon = document.createElement('span');
+                statusIcon.textContent = entry.completed ? '✅' : '⏹️';
+                statusIcon.className = 'ml-2';
+                
+                li.appendChild(taskText);
+                li.appendChild(statusIcon);
+                historyList.prepend(li);
+            });
+        }
+
+        // Fungsi untuk memulai timer
+        function startTimer() {
+            if (!isRunning) {
+                isRunning = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                startBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                startBtn.classList.remove('bg-gameboy-light', 'hover:bg-gameboy-medium');
+                stopBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                stopBtn.classList.add('bg-red-500', 'hover:bg-red-600');
+                
+                timer = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    
+                    if (timeLeft <= 0) {
+                        clearInterval(timer);
+                        isRunning = false;
+                        const taskName = taskInput.value || 'Kegiatan Tanpa Nama';
+                        
+                        if (isWorkTime) {
+                            showNotification('Waktu kerja selesai! Saatnya istirahat.');
+                            saveHistory(taskName, 'Kerja', 25);
+                            timeLeft = 5 * 60; // 5 menit istirahat
+                            isWorkTime = false;
+                        } else {
+                            showNotification('Waktu istirahat selesai! Kembali bekerja.');
+                            saveHistory(taskName, 'Istirahat', 5);
+                            timeLeft = 25 * 60; // 25 menit kerja
+                            isWorkTime = true;
+                        }
+                        
+                        updateModeDisplay();
+                        updateTimerDisplay();
+                        startTimer(); // Mulai fase berikutnya secara otomatis
+                    }
+                }, 1000);
+            }
+        }
+
+        // Fungsi untuk menghentikan timer
+        function stopTimer() {
+            if (isRunning) {
+                clearInterval(timer);
+                isRunning = false;
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                startBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                startBtn.classList.add('bg-gameboy-light', 'hover:bg-gameboy-medium');
+                stopBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+                stopBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            }
+        }
+
+        // Fungsi untuk mereset timer
+        function resetTimer() {
+            clearInterval(timer);
+            isRunning = false;
+            isWorkTime = true;
+            timeLeft = 25 * 60;
+            updateTimerDisplay();
+            updateModeDisplay();
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            startBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            startBtn.classList.add('bg-gameboy-light', 'hover:bg-gameboy-medium');
+            stopBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+            stopBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+            
+            taskInput.value = '';
+        }
+
+        // Fungsi untuk finish (menyelesaikan sesi lebih awal)
+        function finishSession() {
+            if (isRunning) {
+                clearInterval(timer);
+                isRunning = false;
+            }
+            
+            const taskName = taskInput.value || 'Kegiatan Tanpa Nama';
+            const minutesSpent = Math.ceil((isWorkTime ? 25 * 60 : 5 * 60 - timeLeft) / 60);
+            
+            if (isWorkTime) {
+                showNotification(`Sesi kerja diselesaikan lebih awal! Anda bekerja selama ${minutesSpent} menit.`);
+                saveHistory(taskName, 'Kerja', minutesSpent);
+                timeLeft = 5 * 60; // 5 menit istirahat
+                isWorkTime = false;
+            } else {
+                showNotification(`Sesi istirahat diselesaikan lebih awal! Anda istirahat selama ${minutesSpent} menit.`);
+                saveHistory(taskName, 'Istirahat', minutesSpent, false);
+                timeLeft = 25 * 60; // 25 menit kerja
+                isWorkTime = true;
+            }
+            
+            updateModeDisplay();
+            updateTimerDisplay();
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            startBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+            startBtn.classList.add('bg-gameboy-light', 'hover:bg-gameboy-medium');
+            stopBtn.classList.remove('bg-red-500', 'hover:bg-red-600');
+            stopBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startTimer);
+        stopBtn.addEventListener('click', stopTimer);
+        resetBtn.addEventListener('click', resetTimer);
+        finishBtn.addEventListener('click', finishSession);
+
+        // Inisialisasi tampilan
+        updateTimerDisplay();
+        updateModeDisplay();
+        updateHistoryDisplay();
+        pomodoroCount.textContent = `Pomodoro: ${completedPomodoros}`;
+        
+        // Tambahkan event listener untuk tombol A/B (hanya untuk efek)
+        document.querySelectorAll('.relative > div').forEach(btn => {
+            btn.addEventListener('mousedown', function() {
+                this.classList.add('transform', 'scale-90');
+            });
+            btn.addEventListener('mouseup', function() {
+                this.classList.remove('transform', 'scale-90');
+            });
+        });
+    </script>
+</body>
+</html>
